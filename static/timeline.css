@@ -1,0 +1,123 @@
+/* Timeline editor. Takes the host page's colours when it defines --bg, --panel, --line, --text, --accent… */
+.tle {
+  --tle-bg: var(--bg, #111317);
+  --tle-panel: var(--panel, #1a1d23);
+  --tle-panel2: var(--panel2, #22262e);
+  --tle-line: var(--line, #2e333d);
+  --tle-text: var(--text, #e6e8ec);
+  --tle-muted: var(--muted, #8a919e);
+  --tle-accent: var(--accent, #7c9cff);
+  --tle-accent2: var(--accent2, #5b7cf0);
+  --tle-warn: var(--warn, #e5b454);
+  --tle-bad: var(--bad, #ef6b6b);
+  --tle-track-h: 104px;
+  display: flex; flex-direction: column; gap: 8px; min-height: 0;
+  background: var(--tle-panel); color: var(--tle-text); font: 14px/1.4 system-ui, "Segoe UI", sans-serif;
+}
+.tle *, .tle *::before { box-sizing: border-box; }
+.tle [hidden] { display: none !important; }
+.tle button, .tle select {
+  font: inherit; color: inherit; background: var(--tle-panel2); border: 1px solid var(--tle-line);
+  border-radius: 6px; padding: 5px 11px; cursor: pointer; white-space: nowrap; width: auto;
+}
+.tle button:hover:not(:disabled) { border-color: var(--tle-accent); }
+.tle button:disabled { opacity: .45; cursor: default; }
+.tle button.tle-primary { background: var(--tle-accent2); border-color: var(--tle-accent2); color: #fff; }
+.tle button.tle-primary:hover:not(:disabled) { background: var(--tle-accent); }
+.tle button.tle-danger:hover:not(:disabled) { border-color: var(--tle-bad); color: var(--tle-bad); }
+.tle button.tle-small { padding: 1px 8px; font-size: 12px; }
+.tle button.tle-close { padding: 5px 10px; }
+.tle-grow { flex: 1; }
+.tle-muted { color: var(--tle-muted); font-size: 12px; }
+
+.tle-dialog {
+  width: min(1500px, 96vw); height: min(940px, 94vh); max-width: none; max-height: none;
+  padding: 0; border: 1px solid var(--line, #2e333d); border-radius: 10px; background: var(--panel, #1a1d23);
+}
+.tle-dialog[open] { display: flex; }
+.tle-dialog::backdrop { background: rgba(0, 0, 0, .65); }
+.tle-dialog.tle { padding: 12px 14px; }
+
+.tle-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.tle-title { color: var(--tle-accent); margin-right: 4px; }
+.tle-select { max-width: 260px; }
+
+.tle-screen { position: relative; flex: 1; min-height: 160px; background: #000; border-radius: 8px; overflow: hidden; cursor: pointer; }
+.tle-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; visibility: hidden; }
+.tle-video.tle-on { visibility: visible; }
+
+.tle-transport { display: flex; gap: 12px; align-items: center; }
+.tle-play { min-width: 44px; }
+.tle-time { font: 13px ui-monospace, Consolas, monospace; }
+.tle-info { color: var(--tle-muted); font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tle-zoom { width: 160px; accent-color: var(--tle-accent); padding: 0; }
+
+.tle-scroller {
+  position: relative; flex: none; overflow-x: auto; overflow-y: hidden; background: var(--tle-bg);
+  border: 1px solid var(--tle-line); border-radius: 8px; padding-bottom: 4px;
+}
+.tle-lane { position: relative; min-width: 100%; }
+.tle-ruler {
+  position: relative; height: 22px; cursor: col-resize; user-select: none; border-bottom: 1px solid var(--tle-line);
+  background-image: linear-gradient(to right, var(--tle-line) 1px, transparent 1px);
+  background-position: 0 14px; background-repeat: repeat-x;
+}
+.tle-tick { position: absolute; top: 0; height: 100%; padding: 2px 0 0 4px; border-left: 1px solid var(--tle-muted); font-size: 10px; color: var(--tle-muted); pointer-events: none; }
+.tle-track { position: relative; height: calc(var(--tle-track-h) + 16px); }
+.tle-empty { position: absolute; inset: 22px 0 0; display: grid; place-items: center; color: var(--tle-muted); pointer-events: none; }
+.tle-playhead { position: absolute; top: 0; bottom: 0; left: -1px; width: 2px; background: var(--tle-warn); pointer-events: none; z-index: 5; }
+.tle-playhead::before { content: ""; position: absolute; top: 0; left: -5px; border: 6px solid transparent; border-top-color: var(--tle-warn); }
+
+.tle-clip {
+  position: absolute; top: 8px; left: 0; height: var(--tle-track-h); background: var(--tle-panel2);
+  border: 1px solid var(--tle-line); border-radius: 6px; overflow: hidden; cursor: grab;
+  user-select: none; touch-action: none; display: flex; flex-direction: column;
+}
+.tle-clip:hover { border-color: var(--tle-muted); }
+.tle-clip.tle-selected { border-color: var(--tle-accent); box-shadow: 0 0 0 1px var(--tle-accent) inset; }
+.tle-moving .tle-clip { transition: transform .15s ease; }
+.tle-moving .tle-clip.tle-dragging {
+  transition: none; z-index: 4; cursor: grabbing; opacity: .85; pointer-events: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .6); border-color: var(--tle-accent);
+}
+.tle-frames { display: flex; justify-content: space-between; gap: 2px; flex: 1; min-height: 0; background: #000; }
+.tle-thumb { height: 100%; max-width: 50%; min-width: 0; object-fit: cover; display: block; transition: opacity .15s; }
+.tle-thumb.tle-pending { opacity: .45; }
+.tle-narrow .tle-thumb + .tle-thumb { display: none; }
+.tle-narrow .tle-thumb { max-width: 100%; }
+.tle-meta { display: flex; gap: 6px; padding: 2px 8px; font-size: 11px; line-height: 16px; white-space: nowrap; }
+.tle-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tle-dur { color: var(--tle-muted); }
+.tle-narrow .tle-dur { display: none; }
+
+.tle-handle {
+  position: absolute; top: 0; bottom: 0; width: 10px; cursor: ew-resize; z-index: 2; touch-action: none;
+  background: rgba(255, 255, 255, .06);
+}
+.tle-handle::after { content: ""; position: absolute; top: 35%; bottom: 35%; left: 4px; width: 2px; border-radius: 1px; background: rgba(255, 255, 255, .55); }
+.tle-handle.tle-l { left: 0; border-right: 1px solid rgba(0, 0, 0, .4); }
+.tle-handle.tle-r { right: 0; border-left: 1px solid rgba(0, 0, 0, .4); }
+.tle-clip:hover .tle-handle, .tle-trimming .tle-handle { background: rgba(124, 156, 255, .35); }
+.tle-cut-l .tle-handle.tle-l, .tle-cut-r .tle-handle.tle-r { background: var(--tle-warn); }
+.tle-cut-l .tle-handle.tle-l::after, .tle-cut-r .tle-handle.tle-r::after { background: rgba(0, 0, 0, .6); }
+.tle-trimming { border-color: var(--tle-warn); z-index: 3; }
+
+/* Where a dragged clip would land: the slot, with its two cuts lit. */
+.tle-slot {
+  position: absolute; top: 4px; left: 0; height: calc(var(--tle-track-h) + 8px); border-radius: 6px;
+  background: rgba(124, 156, 255, .12); border: 1px dashed var(--tle-accent); pointer-events: none;
+  transition: transform .15s ease, width .15s ease;
+}
+.tle-slot::before, .tle-slot::after {
+  content: ""; position: absolute; top: -4px; bottom: -4px; width: 3px; background: var(--tle-accent);
+  box-shadow: 0 0 8px var(--tle-accent); border-radius: 2px;
+}
+.tle-slot::before { left: -2px; }
+.tle-slot::after { right: -2px; }
+
+.tle-status { display: flex; gap: 10px; align-items: center; min-height: 22px; font-size: 13px; color: var(--tle-muted); }
+.tle-status-text.tle-bad { color: var(--tle-bad); }
+.tle-save { font-size: 12px; white-space: nowrap; }
+.tle-save.tle-bad { color: var(--tle-bad); }
+.tle-bar { width: 180px; height: 6px; background: var(--tle-panel2); border-radius: 3px; overflow: hidden; }
+.tle-bar > div { height: 100%; width: 0; background: var(--tle-accent); transition: width .4s; }
