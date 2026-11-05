@@ -1,10 +1,11 @@
 """Timeline editor: chain clips, trim their ends, reorder them, export the result.
 
-Self-contained (this folder only): copy it into another FastAPI app to reuse it.
+Install it into a FastAPI app as the `timeline_editor` package (see pyproject.toml), or embed this repo
+as a git subtree and import it relatively (see README.md):
 
     from pathlib import Path
     from fastapi.staticfiles import StaticFiles
-    from .timeline import Source, make_router, STATIC_DIR
+    from timeline_editor import Source, make_router, STATIC_DIR
 
     class MyHost:
         def data_dir(self) -> Path: return Path("data/timeline")

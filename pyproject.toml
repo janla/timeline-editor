@@ -1,0 +1,31 @@
+# The timeline editor as the `timeline_editor` package. The repo root is the package folder, so other
+# repos can also embed it as a git subtree (Web2Video has it at web2video/timeline).
+#   uv add "timeline-editor @ git+https://github.com/janla/timeline-editor"
+#   uv add C:/Projects/timeline-editor                 # a local checkout
+# Not editable (the folder is renamed to timeline_editor on install): after changing a local
+# checkout, run `uv sync --reinstall-package timeline-editor` in the app that uses it.
+[project]
+name = "timeline-editor"
+version = "0.1.0"
+description = "A browser timeline editor for FastAPI apps: chain clips, trim, reorder and export them with ffmpeg"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "pydantic>=2",
+]
+
+[project.optional-dependencies]
+# Brings its own ffmpeg binary, for machines without ffmpeg on PATH.
+ffmpeg = ["imageio-ffmpeg>=0.5"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+only-include = ["__init__.py", "media.py", "server.py", "static"]
+sources = { "" = "timeline_editor" }
+
+[tool.hatch.build.targets.sdist]
+only-include = ["__init__.py", "media.py", "server.py", "static", "pyproject.toml", "README.md"]
