@@ -3,3 +3,9 @@ __pycache__/
 .venv/
 dist/
 build/
+
+# The example's clips and what it makes from them
+example/clips/*
+!example/clips/.gitkeep
+example/data/
+example/exports/

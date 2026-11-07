@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Timeline editor example</title>
+<link rel="stylesheet" href="/timeline/timeline.css">
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #14161b; color: #d8dbe2; font: 15px/1.5 system-ui, sans-serif; }
+  main { max-width: 640px; margin: 12vh auto; padding: 0 16px; }
+  h1 { font-size: 22px; margin: 0 0 8px; }
+  p { color: #9aa0ad; margin: 0 0 16px; }
+  code { background: #232631; padding: 1px 5px; border-radius: 4px; color: #d8dbe2; word-break: break-all; }
+  button { font: inherit; padding: 8px 16px; border: 0; border-radius: 6px; background: #5b7cfa; color: #fff; cursor: pointer; }
+  button:disabled { background: #343846; color: #8a8f9c; cursor: default; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Timeline editor</h1>
+  <p id="info">Looking for clips…</p>
+  <button type="button" id="open" disabled>Open timeline</button>
+</main>
+<script type="module">
+  import { openTimeline } from '/timeline/timeline.js';
+
+  const info = document.getElementById('info');
+  const btn = document.getElementById('open');
+  let open = false;
+
+  function show() {
+    if (open) return;
+    open = true;
+    openTimeline({ api: '/api/timeline', title: 'Example', onClosed: () => { open = false; refresh(); } });
+  }
+
+  async function refresh() {
+    const r = await fetch('/api/info').then((res) => res.json());
+    const where = `<code>${r.folder}</code>`;
+    info.innerHTML = r.clips
+      ? `${r.clips} clip${r.clips === 1 ? '' : 's'} in ${where}. Exports go to <code>${r.exports}</code>.`
+      : `No clips yet. Put video files in ${where}, then reload this page.`;
+    btn.disabled = !r.clips;
+    return r.clips;
+  }
+
+  btn.addEventListener('click', show);
+  if (await refresh()) show();
+</script>
+</body>
+</html>

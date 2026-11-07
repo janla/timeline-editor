@@ -4,6 +4,16 @@ A timeline editor for FastAPI apps. Clips go in one track: drag a clip's edges t
 
 The backend is a FastAPI router. The frontend is a plain ES module plus a stylesheet, with no dependencies. Both are in this repo.
 
+## Try it
+
+`example/` runs the editor on a page of its own, with the clips from a folder:
+
+1. Put video files in `example/clips/`. They are ordered by file name.
+2. From the repo root, run `uv run example/app.py`. On the first run uv fetches FastAPI, uvicorn and an ffmpeg build.
+3. Open http://127.0.0.1:8770.
+
+Timelines and thumbnails are saved in `example/data/`, and exports in `example/exports/`. Git ignores the clips and both of those folders. The example loads the editor straight from this repo, so after changing the editor, restart the example and reload the page.
+
 ## Use it in an app
 
 There are two ways. Pick one per app.
