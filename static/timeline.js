@@ -109,7 +109,8 @@ export class TimelineEditor {
     const b = (label, onclick, title, cls) => el('button', { type: 'button', class: cls || '', title, onclick }, label);
     this.select = el('select', { class: 'tle-select', title: 'Timeline', onchange: () => this.switchTo(this.select.value) });
     this.modeSel = el('select', { class: 'tle-select', title: 'What to export' },
-      el('option', { value: 'video' }, 'One video'), el('option', { value: 'clips' }, 'Separate clips'));
+      el('option', { value: 'video' }, 'Entire Timeline'), el('option', { value: 'range' }, 'In/Out Marker'),
+      el('option', { value: 'clips' }, 'Separate clips'));
     this.modeSel.value = pref('mode', 'video');
     this.exportBtn = b('Export…', () => this.export(), 'Render the timeline with its cuts', 'tle-primary');
     this.cancelBtn = b('Cancel export', () => this.exportJob && this.api.exportCancel(this.exportJob), '', 'tle-small');
@@ -141,6 +142,10 @@ export class TimelineEditor {
       oninput: () => this.setZoom(5 * Math.pow(60, this.zoom.value / 100)),
     });
     this.zoom.value = String(Math.round(100 * Math.log(this.pps / 5) / Math.log(60)));
+    this.inBtn = b('[ Set In', () => this.setMark(0), 'Set the in marker at the playhead (I)', 'tle-small');
+    this.outBtn = b('Set Out ]', () => this.setMark(1), 'Set the out marker at the playhead (O)', 'tle-small');
+    this.markText = el('span', { class: 'tle-mark-text' });
+    this.clearBtn = b('✕', () => this.clearMarks(), 'Remove the in and out markers', 'tle-small');
 
     this.ruler = el('div', { class: 'tle-ruler', title: 'Click or drag to move the playhead', onpointerdown: (e) => this.scrub(e) });
     this.track = el('div', { class: 'tle-track' });
@@ -148,8 +153,10 @@ export class TimelineEditor {
     this.slot.hidden = true;
     this.playhead = el('div', { class: 'tle-playhead' });
     this.empty = el('div', { class: 'tle-empty' }, 'Loading…');
+    this.range = el('div', { class: 'tle-range', title: 'Range between the in and out markers' });
+    this.range.hidden = true;
     this.lane = el('div', { class: 'tle-lane' }, this.ruler, this.track, this.playhead);
-    this.track.append(this.slot);
+    this.track.append(this.slot, this.range);
     this.scroller = el('div', { class: 'tle-scroller' }, this.lane, this.empty);
     this.scroller.addEventListener('wheel', (e) => this.wheel(e), { passive: false });
 
@@ -167,6 +174,8 @@ export class TimelineEditor {
         this.opts.onClose ? b('✕', () => this.opts.onClose(), 'Close (Esc)', 'tle-close') : null),
       this.screen,
       el('div', { class: 'tle-transport' }, this.playBtn, this.timeText, this.info, el('span', { class: 'tle-grow' }),
+        el('div', { class: 'tle-marks' }, this.inBtn, this.outBtn, this.markText, this.clearBtn),
+        el('span', { class: 'tle-grow' }),
         this.undoBtn, this.redoBtn, el('span', { class: 'tle-muted' }, 'Zoom'), this.zoom),
       this.scroller,
       el('div', { class: 'tle-status' }, this.bar, this.statusText, this.cancelBtn, el('span', { class: 'tle-grow' }), this.saveText));
@@ -239,7 +248,8 @@ export class TimelineEditor {
     if (!this.t || (this.sentSeq === this.editSeq && !extra.name)) return;
     const seq = this.editSeq;
     const t = this.t;
-    const body = { rev: t.rev, ...extra, clips: t.clips.map((c) => ({ id: c.id, key: c.key, in: c.in, out: c.out })) };
+    const body = { rev: t.rev, ...extra, marks: t.marks || [null, null],
+      clips: t.clips.map((c) => ({ id: c.id, key: c.key, in: c.in, out: c.out })) };
     this.saveState('Saving…');
     this.saving = (async () => {
       try {
@@ -449,6 +459,53 @@ export class TimelineEditor {
     this.lane.style.width = `${width}px`;
     this.drawRuler(width);
     this.drawPlayhead();
+    this.drawRange();
+  }
+
+  // ---------- in and out markers ----------
+  // Positions on the timeline, in seconds, saved with it. A marker that is not set stands for the
+  // timeline's start (in) or end (out).
+
+  markRange() {
+    const [a, b] = this.t?.marks || [null, null];
+    if (a == null && b == null) return null;
+    const total = this.total();
+    const from = clamp(a ?? 0, 0, total), to = clamp(b ?? total, 0, total);
+    return to > from ? [from, to] : null;
+  }
+
+  setMark(which) {
+    if (!this.t?.clips.length) return;
+    const m = [...(this.t.marks || [null, null])];
+    m[which] = this.T;
+    // A marker on the wrong side of the one just set goes away.
+    if (m[0] != null && m[1] != null && m[1] <= m[0]) m[1 - which] = null;
+    this.t.marks = m;
+    this.touch();
+    this.drawRange();
+  }
+
+  clearMarks() {
+    if (!this.t) return;
+    this.t.marks = [null, null];
+    this.touch();
+    this.drawRange();
+  }
+
+  drawRange() {
+    if (!this.t) return;
+    const [a, b] = this.t.marks || [null, null];
+    const r = this.markRange();
+    this.range.hidden = !r;
+    if (r) {
+      this.range.style.transform = `translateX(${r[0] * this.pps}px)`;
+      this.range.style.width = `${Math.max(2, (r[1] - r[0]) * this.pps)}px`;
+      this.range.classList.toggle('tle-open-l', a == null);
+      this.range.classList.toggle('tle-open-r', b == null);
+    }
+    this.markText.textContent = r ? `${fmt(r[0])} – ${fmt(r[1])}` : 'No range';
+    this.markText.classList.toggle('tle-muted', !r);
+    this.clearBtn.disabled = a == null && b == null;
   }
 
   drawRuler(width) {
@@ -659,7 +716,10 @@ export class TimelineEditor {
       if (k === 'y' || e.shiftKey) this.redo(); else this.undo();
       return;
     }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === ' ') { e.preventDefault(); this.toggle(); }
+    else if (k === 'i') { e.preventDefault(); this.setMark(0); }
+    else if (k === 'o') { e.preventDefault(); this.setMark(1); }
     else if (e.key === 'Home') { e.preventDefault(); this.seek(0); }
     else if (e.key === 'End') { e.preventDefault(); this.seek(this.total()); }
     else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && c) {
@@ -794,6 +854,10 @@ export class TimelineEditor {
     if (!this.t?.clips.length) return;
     const mode = this.modeSel.value;
     setPref('mode', mode);
+    if (mode === 'range' && !this.markRange()) {
+      this.status('Set an in or out marker first: move the playhead there and click Set In or Set Out.', true);
+      return;
+    }
     this.exportBtn.disabled = true;
     this.status(mode === 'clips' ? 'Choose a folder for the clips… (the dialog may open behind this window)'
       : 'Choose where to save the video… (the dialog may open behind this window)');

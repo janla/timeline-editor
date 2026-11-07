@@ -1,6 +1,6 @@
 # timeline-editor
 
-A timeline editor for FastAPI apps. Clips go in one track: drag a clip's edges to trim it, drag the clip to move it, undo with Ctrl+Z (redo: Ctrl+Y), and export one video or the trimmed clips one by one. Trims snap to frames. Holds several timelines per data folder.
+A timeline editor for FastAPI apps. Clips go in one track: drag a clip's edges to trim it, drag the clip to move it, undo with Ctrl+Z (redo: Ctrl+Y), and export the entire timeline as one video, only the part between the in and out markers (*Set In* / *Set Out* at the playhead, or the I and O keys; the range shows as a yellow line above the clips), or the trimmed clips one by one. Trims snap to frames. Holds several timelines per data folder.
 
 The backend is a FastAPI router. The frontend is a plain ES module plus a stylesheet, with no dependencies. Both are in this repo.
 

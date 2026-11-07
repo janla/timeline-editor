@@ -71,6 +71,18 @@ def _slug(s: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]+", "-", s).strip("-")[:48] or "clip"
 
 
+def mark_range(t: dict) -> tuple[float, float] | None:
+    """The part of a timeline between its in and out markers, in seconds. An unset marker stands for
+    the timeline's start or end. None when no marker is set or the range is empty."""
+    a, b = (t.get("marks") or [None, None])[:2]
+    if a is None and b is None:
+        return None
+    total = sum(c["out"] - c["in"] for c in t["clips"] if "out" in c)
+    a = min(max(a or 0.0, 0.0), total)
+    b = min(max(total if b is None else b, 0.0), total)
+    return (a, b) if b > a else None
+
+
 def frames(clip: dict) -> tuple[int, int]:
     """First frame and the frame after the last, of a trimmed clip."""
     fps = clip["fps"]
@@ -195,6 +207,7 @@ class TimelinePut(BaseModel):
     rev: int
     name: str | None = None
     clips: list[ClipIn]
+    marks: list[float | None] | None = None  # [in, out] on the timeline, in seconds; None: leave them
 
 
 class TimelineNew(BaseModel):
@@ -203,7 +216,9 @@ class TimelineNew(BaseModel):
 
 
 class ExportReq(BaseModel):
-    mode: str = "video"  # "video": one file; "clips": every trimmed clip as a file of its own
+    # "video": one file; "range": one file of the part between the in and out markers;
+    # "clips": every trimmed clip as a file of its own
+    mode: str = "video"
 
 
 def make_router(host: Host, ask_path: AskPath | None = None, thumb_height: int = 144) -> APIRouter:
@@ -228,7 +243,8 @@ def make_router(host: Host, ask_path: AskPath | None = None, thumb_height: int =
         for c in t["clips"]:
             s = by_key[c["key"]]
             clips.append({**c, "label": s.label, "group": s.group, "vtag": _vtag(s)})
-        return {"id": t["id"], "name": t["name"], "auto": t.get("auto", False), "rev": t["rev"], "clips": clips}
+        return {"id": t["id"], "name": t["name"], "auto": t.get("auto", False), "rev": t["rev"],
+                "marks": t.get("marks") or [None, None], "clips": clips}
 
     def summary(t: dict) -> dict:
         return {"id": t["id"], "name": t["name"], "clips": len(t["clips"]),
@@ -256,6 +272,8 @@ def make_router(host: Host, ask_path: AskPath | None = None, thumb_height: int =
                 base = st.get(req.copy_of)
                 clips = [{**c, "id": uuid.uuid4().hex[:12]} for c in base["clips"]]
                 t = _new_timeline(name, base.get("auto", True), clips)
+                if base.get("marks"):
+                    t["marks"] = list(base["marks"])
             else:
                 t = _new_timeline(name)
             st.doc["timelines"].append(t)
@@ -318,6 +336,9 @@ def make_router(host: Host, ask_path: AskPath | None = None, thumb_height: int =
             t["clips"] = clips
             if req.name is not None and req.name.strip():
                 t["name"] = req.name.strip()
+            if req.marks is not None:
+                m = (list(req.marks) + [None, None])[:2]
+                t["marks"] = [None if x is None else max(0.0, float(x)) for x in m]
             t["rev"] += 1
             st.save()
             st.prune_thumbs(sources())
@@ -344,6 +365,11 @@ def make_router(host: Host, ask_path: AskPath | None = None, thumb_height: int =
             t = await fresh(st, st.get(tid))
         if not t["clips"]:
             raise HTTPException(400, "The timeline has no clips.")
+        rng = None
+        if req.mode == "range":
+            rng = mark_range(t)
+            if not rng:
+                raise HTTPException(400, "Set an in or out marker first.")
         if any(e["state"] == "running" for e in exports.values()):
             raise HTTPException(409, "An export is already running.")
         if not ask_path:
@@ -353,7 +379,10 @@ def make_router(host: Host, ask_path: AskPath | None = None, thumb_height: int =
             target = await ask_path("folder", "Export the clips to…", last)
         else:
             name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", t["name"]).strip() or "timeline"
-            target = await ask_path("save", "Export the timeline as…", str(Path(last) / f"{name}.mp4") if last else f"{name}.mp4")
+            if rng:
+                name += " in-out"
+            title = "Export the in/out range as…" if rng else "Export the timeline as…"
+            target = await ask_path("save", title, str(Path(last) / f"{name}.mp4") if last else f"{name}.mp4")
         if not target:
             return {"cancelled": True}
         st.doc["export"].update(dir=target if req.mode == "clips" else str(Path(target).parent), mode=req.mode)
@@ -363,18 +392,30 @@ def make_router(host: Host, ask_path: AskPath | None = None, thumb_height: int =
         job = {"id": uuid.uuid4().hex[:10], "state": "running", "progress": 0.0, "target": target,
                "files": [], "error": "", "started": time.time()}
         exports[job["id"]] = job
-        job["task"] = asyncio.create_task(run_export(st, job, t, by_key, req.mode, Path(target)))
+        job["task"] = asyncio.create_task(run_export(st, job, t, by_key, req.mode, Path(target), rng))
         return {k: v for k, v in job.items() if k != "task"}
 
-    async def run_export(st: TimelineStore, job: dict, t: dict, by_key: dict, mode: str, target: Path):
+    async def run_export(st: TimelineStore, job: dict, t: dict, by_key: dict, mode: str, target: Path,
+                         rng: tuple[float, float] | None = None):
         cuts = []
+        pos = 0.0  # where the clip starts on the timeline
         for c in t["clips"]:
             s = by_key.get(c["key"])
+            a, b = frames(c)
+            start, pos = pos, pos + (c["out"] - c["in"])
             if not s:
                 continue
+            if rng:
+                # Only the frames of this clip that lie between the markers.
+                fps = c["fps"]
+                a, b = (max(a, a + round((rng[0] - start) * fps)), min(b, a + round((rng[1] - start) * fps)))
+                if b <= a:
+                    continue
             info = await st.probe(s.path)
-            a, b = frames(c)
             cuts.append((c, s, info, a, b))
+        if not cuts:
+            job.update(state="error", error="No frames between the in and out markers.")
+            return
         total = sum((b - a) / info["fps"] for _, _, info, a, b in cuts) or 1
         done = 0.0
 
