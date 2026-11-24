@@ -78,3 +78,5 @@ On the page:
 ```
 
 `api` can also be an object shaped like `restApi()` in `timeline.js`, to talk to a backend other than this one.
+
+The editor remembers which timeline was open and where its playhead stood, in the browser's local storage, separately for each `api` URL, so an app with several data folders (one per project or batch) keeps them apart. With an `api` object, pass `scope: '…'` to tell them apart.

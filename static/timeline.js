@@ -89,6 +89,8 @@ export class TimelineEditor {
     this.root = root;
     this.opts = opts;
     this.api = !opts.api || typeof opts.api === 'string' ? restApi(opts.api) : opts.api;
+    // Which timeline was open and where its playhead stood are remembered per API (each data folder).
+    this.scope = opts.scope ?? (typeof opts.api === 'string' ? opts.api : '');
     this.t = null;          // the timeline shown: {id, name, rev, clips: [...]}
     this.views = new Map(); // clip id -> its elements
     this.pps = pref('pps', 40); // pixels per second
@@ -198,7 +200,7 @@ export class TimelineEditor {
     try {
       const r = await this.api.list();
       this.list = r.timelines;
-      const id = [want, pref('active'), this.list[0]?.id].find((x) => x && this.list.some((t) => t.id === x));
+      const id = [want, pref(this.prefKey('active')), this.list[0]?.id].find((x) => x && this.list.some((t) => t.id === x));
       await this.switchTo(id, true);
     } catch (e) {
       this.empty.textContent = 'Could not load the timeline: ' + e.message;
@@ -217,10 +219,17 @@ export class TimelineEditor {
     try {
       this.apply(await this.api.get(id));
     } catch (e) { this.status('Could not open the timeline: ' + e.message, true); return; }
-    setPref('active', id);
+    setPref(this.prefKey('active'), id);
     this.fillSelect();
     this.updateUndo();
-    this.seek(0);
+    this.seek(pref(this.prefKey('pos:' + id), 0));
+  }
+
+  prefKey(key) { return this.scope ? `${this.scope}|${key}` : key; }
+
+  // Remembers the playhead of the timeline shown, to put it back there when it is opened again.
+  savePos() {
+    if (this.t) setPref(this.prefKey('pos:' + this.t.id), Math.round(this.T * 1000) / 1000);
   }
 
   apply(t) {
@@ -792,6 +801,7 @@ export class TimelineEditor {
   }
 
   pause() {
+    this.savePos();
     this.playing = false;
     this.playBtn.textContent = '▶';
     cancelAnimationFrame(this.raf);
